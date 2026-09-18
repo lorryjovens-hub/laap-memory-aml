@@ -1,0 +1,8 @@
+# LAAP Memory — runtime dependencies
+# Deliberately minimal: the memory service uses only the standard library;
+# starlette/uvicorn are required for the HTTP surface.
+starlette>=0.37
+uvicorn>=0.29
+
+# For running the contract tests (TestClient):
+# httpx>=0.27

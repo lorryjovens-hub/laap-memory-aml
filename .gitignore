@@ -1,0 +1,35 @@
+# Credentials — never commit
+.env
+*.key
+**/aml_credentials.txt
+
+# Memory databases (evaluation data lives here; must not be committed)
+**/aml_memory.sqlite3
+**/aml*.sqlite3
+**/*.sqlite3-wal
+**/*.sqlite3-shm
+
+# Logs (must not retain evaluation traces)
+**/*.log
+
+# Runtime
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Cloudflare tunnel credentials
+**/.cloudflared/
+*.cfargotunnel.com
+cloudflared_config.local.yml
+
+# OS
+.DS_Store
+Thumbs.db

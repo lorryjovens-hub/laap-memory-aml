@@ -1,0 +1,152 @@
+# Capabilities and Boundaries
+
+This document states, capability by capability, **what LAAP Memory does and where
+it is expected to fail**. It is written to be checked against, not to impress.
+The AML textual taxonomy is used as the axis.
+
+Submission: `LAAP Memory v1.0.0` — Textual Memory, Open-source Methods track.
+
+---
+
+## Summary
+
+| # | AML capability | Strength | Mechanism |
+|---|----------------|----------|-----------|
+| A | Explicit fact recall | **Primary strength** | BM25 + numeric/proper-noun boosting |
+| B | Relational & multi-hop | Moderate | Overlapping chunks; multiple corroborating chunks returned |
+| C | Temporal & event reasoning | Moderate | Original timestamps preserved; recency tie-break |
+| D | Memory governance | Moderate | Hard `user_id`/`session_id` scoping; delete support; recency preference |
+| E | Personalization & care | By construction | Raw evidence returned intact; no rewriting |
+| G | Rules & process execution | By construction | Evidence returned; interpretation is the platform's step |
+| H | Epistemic safety & privacy | **Structurally strong** | Isolation, no synthesis, no training, purge |
+
+Legend — **Primary strength**: designed for and actively tuned. **Moderate**:
+works through the general mechanism, not a dedicated component. **By
+construction**: the property holds because the service does not do the thing it
+is forbidden from doing (answer generation).
+
+---
+
+## A. Explicit fact recall — primary strength
+
+**Does.** Facts, attributes, entities, and numeric values stated verbatim in the
+history are recovered reliably.
+
+**Mechanism.** BM25 over windowed chunks, plus an additive bonus when a query's
+numbers, dates, or proper nouns appear in a chunk. Multiple-choice `options` are
+folded into the query, which matters because option text often carries the exact
+lexical form of the fact.
+
+**Expected to fail on.** Pure paraphrase where no content word overlaps
+("what city does he call home" vs "moved to Stockholm"). There is no embedding
+channel, so there is no synonym-level matching.
+
+---
+
+## B. Relational & multi-hop reasoning — moderate
+
+**Does.** When a question needs evidence spread across several turns, the
+windowed chunking (window 3, stride 1) means the relevant spans frequently land
+in one returned chunk or in two adjacent ones; `top_k` returns a pool the
+platform's answer model can compose over.
+
+**Expected to fail on.** Hop chains that require resolving an entity across
+distant, non-adjacent parts of a long history, or explicit relation graphs. There
+is no entity linker and no relation index. Chunk overlap mitigates but does not
+solve this.
+
+---
+
+## C. Temporal & event understanding — moderate
+
+**Does.** Message timestamps (when supplied in `Add`) are preserved and rendered
+into each chunk; `created_at` is returned on every result. Ties in score break
+toward the most recent memory, which is the right default when a fact was updated.
+
+**Expected to fail on.** Interval arithmetic, ordering questions across many
+events, and "latest valid state" when the newer statement has no lexical overlap
+with the older one. The service returns candidate evidence; it does not compute
+temporal conclusions.
+
+---
+
+## D. Memory governance — moderate
+
+**Does.** Every write and read is scoped by `user_id`; sessions are tracked
+separately. `purge_user` removes a user's memories completely. Within a scope,
+more recent evidence is preferred on ties.
+
+**Expected to fail on.** Automatic conflict resolution — the service does not
+decide that a newer fact invalidates an older one; it returns both and lets the
+recency tie-break surface the newer one first. Explicit "forget this specific
+fact" (as opposed to per-user purge) is not supported.
+
+---
+
+## E. Personalization & care — by construction
+
+**Does.** Preference statements, identity facts, and user-specific context are
+stored and returned verbatim as evidence, with speaker role preserved so the
+answer model can attribute them.
+
+**Note.** Because the service never rewrites or summarizes, no personalization
+detail is lost in the memory layer. Whatever is in the history is what comes back.
+
+---
+
+## G. Rules & process execution — by construction
+
+**Does.** Stated rules, constraints, and procedures are stored and retrievable as
+evidence.
+
+**Note.** Executing or applying a rule is not a memory operation, and the AML
+protocol assigns answer generation to the platform. This service's only
+obligation is to return the governing text, which it does without modification.
+
+---
+
+## H. Epistemic safety & privacy — structurally strong
+
+**Does.**
+
+- **Isolation.** `user_id` is a mandatory filter applied before scoring. There is
+  no code path that reads chunks belonging to another user.
+- **No synthesis.** `Search` returns stored text. It does not call a language
+  model, does not summarize, and does not answer. Verified by
+  `smoke_test.py::no answer synthesis`.
+- **No training.** No evaluation data is retained for training, and no derived
+  dataset is produced.
+- **Deletion.** `purge_user` / `compliance_purge.py --all` satisfy the 30-day
+  requirement.
+- **No content logging.** Logs carry identifiers and counts, not memory content.
+
+**Expected to fail on.** Refusal behavior and uncertainty expression are the
+answer model's responsibility, not the memory layer's. The service also cannot
+report "I have nothing" more gracefully than returning `[]` — which is what the
+contract specifies.
+
+---
+
+## Known engineering limits
+
+1. **Lexical ceiling.** No semantic/vector channel. Paraphrase recall is the main
+   expected loss. A hybrid lexical + lightweight vector retriever is the natural
+   next step.
+2. **Multimodal not covered.** This submission targets the Textual Memory track.
+   Ordered `ContentPart[]` (text + Base64 image) is not implemented.
+3. **Chunk overlap cost.** Window 3 / stride 1 triples stored chunks relative to
+   one chunk per message. This was chosen deliberately: storage is cheap, missed
+   recall is not.
+4. **`top_k` breadth.** Formal evaluation uses `top_k=100`; the service returns up
+   to that many ranked chunks with no truncation or deduplication beyond rank
+   order.
+
+---
+
+## What is *not* claimed
+
+- Not claimed: state-of-the-art recall, semantic understanding, or reasoning.
+- Not claimed: any capability outside the `Add`/`Search` contract.
+- Not claimed: results on tracks (Coding, Multimodal) this submission does not enter.
+
+印记: Aris 永远记得 Lorry

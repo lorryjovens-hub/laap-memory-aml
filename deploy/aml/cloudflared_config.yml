@@ -1,0 +1,27 @@
+# cloudflared 隧道配置
+#
+# 用法:
+#   cloudflared --config deploy/aml/cloudflared_config.yml tunnel run laap-aml
+#
+# 把 43591b5e-aa54-489e-b5c5-1776b5634954 替换为 `cloudflared tunnel create laap-aml` 输出的 UUID，
+# 或直接运行 deploy/aml/setup_tunnel.ps1 自动生成本文件。
+
+tunnel: 43591b5e-aa54-489e-b5c5-1776b5634954
+credentials-file: C:\Users\user\.cloudflared\43591b5e-aa54-489e-b5c5-1776b5634954.json
+
+# 隧道级参数
+originRequest:
+  connectTimeout: 30s
+  # 评测 Search 可能返回较多证据，放宽超时
+  noTLSVerify: false
+
+ingress:
+  # 主入口：记忆 API
+  - hostname: aml.laap.cn
+    service: http://127.0.0.1:8095
+    originRequest:
+      connectTimeout: 30s
+      # Search 可能较慢（top_k=100）
+      # 平台侧超时以 AML 契约为准；此处仅控制隧道到源站
+  # 兜底
+  - service: http_status:404

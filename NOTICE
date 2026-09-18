@@ -1,0 +1,77 @@
+# NOTICE
+
+LAAP Memory — Agent Memory Leaderboard (AML) submission
+Copyright 2026 LAAP LAB / LAAP Team
+
+This product includes software developed as part of the LAAP project.
+
+---
+
+## 1. Origin and authorship
+
+The memory service in this repository (`laap/aml/`) is an **original
+implementation** written for the AML evaluation. It is a deliberately minimal,
+self-contained slice extracted from the larger LAAP project; no other LAAP
+module is required or included.
+
+- Author: LAAP Team (LAAP LAB)
+- Contact: lorry <2574566046@qq.com>
+- Repository: https://github.com/<org>/laap-memory-aml
+- Submitted version: v1.0.0
+
+## 2. Third-party dependencies
+
+| Component | License | Role |
+|-----------|---------|------|
+| Starlette | BSD-3-Clause | HTTP application/routing |
+| Uvicorn | BSD-3-Clause | ASGI server |
+| Python standard library | PSF-2.0 | storage (`sqlite3`), tokenization (`re`), concurrency, JSON, HTTP client (in tooling only) |
+
+No other runtime dependency is used. No embedding model, vector database, or
+hosted LLM service is contacted at any point.
+
+## 3. Algorithms
+
+**BM25 ranking.** The retrieval scorer in `laap/aml/service.py` implements the
+classic BM25 ranking function (Robertson & Zaragoza, *The Probabilistic Relevance
+Framework: BM25 and Beyond*, 2009). The formulation is public-domain mathematics;
+the implementation here is written from the standard formula and is not copied
+from any particular library. Parameters used: `k1=1.5`, `b=0.75`.
+
+**Windowed chunking, signal boosting, recency preference.** Original design
+choices made for this submission. They are described in `README.md` and
+`docs/CAPABILITIES.md`.
+
+## 4. Changes relative to the LAAP project
+
+Only three source files were carried over from the parent project, with no
+functional modification for the evaluation:
+
+| File | Origin | Change |
+|------|--------|--------|
+| `laap/aml/service.py` | LAAP project, `laap/aml/service.py` | None (verbatim) |
+| `laap/aml/server.py` | LAAP project, `laap/aml/server.py` | None (verbatim) |
+| `tests/test_aml_api.py` | LAAP project, `laap/aml/test_aml_api.py` | Import path made portable (see below) |
+
+`tests/test_aml_api.py` originally contained a hard-coded absolute import path
+pointing at the parent project. In this repository that path is resolved relative
+to the test file so the suite runs from a clean checkout.
+
+`laap/__init__.py` in this repository is a new, minimal file written for the
+release. The parent project's `laap/__init__.py` imports the wider framework and
+is intentionally not included.
+
+## 5. Data handling
+
+- Evaluation memories and questions are processed only to serve `Add`/`Search`.
+- No evaluation data is used for training, fine-tuning, or any derived artifact.
+- Memory content is not written to logs. The service logs counters and
+  identifiers only.
+- `purge_user` supports deletion within the 30-day requirement; see
+  `deploy/aml/compliance_purge.py`.
+
+## 6. Red lines observed
+
+- `Search` never generates or disguises a final answer.
+- Retrieval is partitioned by `user_id`; there is no cross-user or cross-sample path.
+- No hard-coding of benchmark questions, no prompt injection, no human answering.
