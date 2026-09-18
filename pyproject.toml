@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "laap-memory-aml"
-version = "1.0.2"
+version = "1.0.3"
 description = "LAAP Memory — Agent Memory Leaderboard (AML) Add/Search memory service"
 readme = "README.md"
 license = { text = "Apache-2.0" }

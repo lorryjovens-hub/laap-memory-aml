@@ -42,6 +42,11 @@ from starlette.routing import Route
 
 from laap.aml.service import AMLMemoryService
 
+try:
+    from laap.aml import __version__ as _AML_VERSION
+except Exception:  # noqa: BLE001
+    _AML_VERSION = "unknown"
+
 logger = logging.getLogger("laap.aml.server")
 
 _SERVICE: AMLMemoryService | None = None
@@ -126,7 +131,7 @@ async def health(request: Any) -> JSONResponse:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     return JSONResponse({
         "ok": True, "service": "laap-aml-memory",
-        "version": "1.0.0", "auth_required": bool(_MEMORY_KEY),
+        "version": _AML_VERSION, "auth_required": bool(_MEMORY_KEY),
         "chunks": st["chunks"], "users": st["users"],
         "requests": dict(_REQUESTS), "ts": int(time.time() * 1000),
     })

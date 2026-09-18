@@ -57,8 +57,12 @@ logger = logging.getLogger("laap.aml.service")
 
 DEFAULT_DB = "~/.laap/aml_memory.sqlite3"
 
-#: 分块窗口：连续多少条消息合成一个记忆块（用于**排序**）
-CHUNK_WINDOW = 3
+#: 分块窗口：连续多少条消息合成一个记忆块（用于**排序**）。
+#: 实测（PersonaMem-v2 子集）：排序粒度越细越好——
+#:   window=1 + 扩4  非敏感 97.4%
+#:   window=3 + 扩4  非敏感 94.0%
+#: （保留扩展窗口作为“返回宽”的手段，而不用它做排序单位。）
+CHUNK_WINDOW = 1
 
 #: 返回时向前后各扩展多少条相邻块（用于**作答上下文**）。
 #: "排序细、返回宽"——在 PersonaMem-v2 上实测：

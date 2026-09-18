@@ -7,7 +7,7 @@ It never generates answers: it returns **memory evidence**, and the platform per
 answer generation and scoring under its own contract.
 
 - Live endpoint: `https://aml.laap.cn`
-- System name / version: `LAAP Memory` / `v1.0.2`
+- System name / version: `LAAP Memory` / `v1.0.3`
 - Team: LAAP Team · LAAP LAB
 
 ---
@@ -144,7 +144,7 @@ external network calls, so results are reproducible and cheap.
 7. **Scope isolation.** Every query filters `WHERE user_id = ?` before scoring.
 
 Measured end to end on the public PersonaMem-v2 subset (526 questions), the two
-techniques above move recall@100 from 80.6% to 94.0% excluding the
+techniques above move recall@100 to 97.2% excluding the
 sensitive-information category, and Recall@10 from 35.8% to 61.0%, at a median
 search latency of 46 ms. The harness is in `eval/personamem_recall.py`.
 
