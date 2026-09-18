@@ -6,4 +6,4 @@ import the rest of the LAAP framework so that the evaluation contract can be
 reproduced with two dependencies.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

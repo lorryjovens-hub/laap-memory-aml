@@ -18,10 +18,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-# 可移植导入：以本文件为基准解析仓库根，不依赖任何绝对路径
+# 可移植导入：以本文件为基准解析仓库根
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+sys.path.insert(0, str(_REPO_ROOT))
 
 from laap.aml.service import AMLMemoryService
 

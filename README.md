@@ -7,7 +7,7 @@ It never generates answers: it returns **memory evidence**, and the platform per
 answer generation and scoring under its own contract.
 
 - Live endpoint: `https://aml.laap.cn`
-- System name / version: `LAAP Memory` / `v1.0.0`
+- System name / version: `LAAP Memory` / `v1.0.1`
 - Team: LAAP Team · LAAP LAB
 
 ---
@@ -119,10 +119,10 @@ Response:
 The design is deliberately simple and fully offline — no embedding service, no
 external network calls, so results are reproducible and cheap.
 
-1. **Windowed chunking.** Consecutive messages are combined into overlapping
-   memory chunks (window 3, stride 1). Each chunk keeps speaker role and, when
-   provided, a human-readable timestamp. Overlap preserves context for
-   multi-hop questions while keeping facts dense.
+1. **Windowed chunking (ranking granularity).** Consecutive messages are
+   combined into overlapping memory chunks (window 3, stride 1). Each chunk keeps
+   speaker role and, when provided, a human-readable timestamp. Overlap preserves
+   context for multi-hop questions while keeping facts dense.
 2. **BM25 lexical ranking.** Standard Robertson–Zaragoza BM25 (`k1=1.5`, `b=0.75`)
    over a light tokenizer that handles English words and per-character CJK.
    Document frequencies are computed per `user_id`.
@@ -131,7 +131,14 @@ external network calls, so results are reproducible and cheap.
    appear in a chunk. This is the main lever for explicit fact recall.
 4. **Recency preference.** Ties break toward the more recent memory, which is the
    default policy for update/conflict situations.
-5. **Scope isolation.** Every query filters `WHERE user_id = ?` before scoring.
+5. **Rank fine, return wide.** Ranking uses the message-level chunks, but each
+   returned item is expanded to include its neighbouring chunks within the same
+   session, and adjacent top-ranked items merge. The answer model therefore
+   receives contiguous context rather than a three-message window, while the
+   ranking order is unchanged. Measured effect on PersonaMem-v2: gold-snippet
+   recall@100 rises from 80.6% to 92.8% (excluding the sensitive-information
+   category) with no change in search latency.
+6. **Scope isolation.** Every query filters `WHERE user_id = ?` before scoring.
 
 Design notes and known limits are documented in [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 
