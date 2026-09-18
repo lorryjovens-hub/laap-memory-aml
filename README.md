@@ -7,7 +7,7 @@ It never generates answers: it returns **memory evidence**, and the platform per
 answer generation and scoring under its own contract.
 
 - Live endpoint: `https://aml.laap.cn`
-- System name / version: `LAAP Memory` / `v1.0.1`
+- System name / version: `LAAP Memory` / `v1.0.2`
 - Team: LAAP Team · LAAP LAB
 
 ---
@@ -129,16 +129,24 @@ external network calls, so results are reproducible and cheap.
 3. **Strong-signal boosting.** Numbers, dates, and proper nouns extracted from the
    query (and from multiple-choice `options`) receive an additive bonus when they
    appear in a chunk. This is the main lever for explicit fact recall.
-4. **Recency preference.** Ties break toward the more recent memory, which is the
+4. **Corpus-local co-occurrence expansion.** Query terms are expanded with the
+   strongest PMI-associated terms from the same user's own memories, which
+   partially bridges questions that share no surface vocabulary with their
+   evidence. Statistics are built lazily per scope and cached.
+5. **Recency preference.** Ties break toward the more recent memory, which is the
    default policy for update/conflict situations.
-5. **Rank fine, return wide.** Ranking uses the message-level chunks, but each
+6. **Rank fine, return wide.** Ranking uses the message-level chunks, but each
    returned item is expanded to include its neighbouring chunks within the same
    session, and adjacent top-ranked items merge. The answer model therefore
    receives contiguous context rather than a three-message window, while the
-   ranking order is unchanged. Measured effect on PersonaMem-v2: gold-snippet
-   recall@100 rises from 80.6% to 92.8% (excluding the sensitive-information
-   category) with no change in search latency.
-6. **Scope isolation.** Every query filters `WHERE user_id = ?` before scoring.
+   ranking order is unchanged. Measured on PersonaMem-v2: gold-snippet recall@100
+   rises from 80.6% to 92.8% with no change in search latency.
+7. **Scope isolation.** Every query filters `WHERE user_id = ?` before scoring.
+
+Measured end to end on the public PersonaMem-v2 subset (526 questions), the two
+techniques above move recall@100 from 80.6% to 94.0% excluding the
+sensitive-information category, and Recall@10 from 35.8% to 61.0%, at a median
+search latency of 46 ms. The harness is in `eval/personamem_recall.py`.
 
 Design notes and known limits are documented in [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 

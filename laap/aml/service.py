@@ -67,6 +67,13 @@ CHUNK_WINDOW = 3
 #: 取 4 作默认：召回大幅提升，同时控制单条返回体的体积。
 DEFAULT_RETURN_NEIGHBORS = 4
 
+#: 查询扩展：取多少个共现词（实测 top8 / min2 最优，再多引入噪声）
+EXPAND_TOP_N = 8
+#: 共现词最少出现次数
+EXPAND_MIN_COUNT = 2
+#: 共现索引的 token 预算上限；超过则跳过扩展（防超大语料拖慢首查）
+COOC_TOKEN_BUDGET = 300_000
+
 
 # ── 文本处理 ────────────────────────────────────────────────────────────
 
@@ -134,21 +141,25 @@ class AMLMemoryService:
 
     def __init__(self, db_path: Optional[str] = None,
                  chunk_window: Optional[int] = None,
-                 return_neighbors: int = DEFAULT_RETURN_NEIGHBORS):
+                 return_neighbors: int = DEFAULT_RETURN_NEIGHBORS,
+                 query_expansion: bool = True):
         """Args:
             chunk_window: 索引分块窗口（细粒度→排序准）。
             return_neighbors: 返回时向前后各扩展多少条相邻块（宽粒度→上下文全）。
-                "排序细、返回宽"：排序用小窗口保精度，返回时拼接邻居给
-                作答模型足够上下文。0 = 不扩展。
+            query_expansion: 是否启用**语料内共现查询扩展**（PMI 加权，纯统计、
+                零依赖）。用于缓解“改写/主题关联”类漏召回。
         """
         self.db_path = str(Path(db_path or DEFAULT_DB).expanduser())
         self.chunk_window = int(chunk_window or CHUNK_WINDOW)
         self.return_neighbors = int(max(0, return_neighbors))
+        self.query_expansion = bool(query_expansion)
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._init_db()
         # 词法统计缓存（按 user 失效）
         self._df_cache: Dict[str, Dict[str, int]] = {}
+        # 共现统计缓存：user -> (cooc, df, ndocs)；None 表示已判定不值得建
+        self._cooc_cache: Dict[str, Any] = {}
 
     # ── 存储 ────────────────────────────────────────────────────────────
 
@@ -249,6 +260,7 @@ class AMLMemoryService:
                 "(id,user_id,session_id,request_id,content,ts,seq,created_at) "
                 "VALUES (?,?,?,?,?,?,?,?)", rows)
         self._df_cache.pop(user_id, None)
+        self._cooc_cache.pop(user_id, None)
         logger.info("[AML] add user=%s session=%s msgs=%d chunks=%d",
                     user_id, session_id, len(msgs), len(rows))
         return AddResult(True, request_id, user_id, session_id, len(rows))
@@ -283,6 +295,9 @@ class AMLMemoryService:
         if options:
             for o in options:
                 q_tokens.extend(tokenize(str(o)))
+        # 语料内共现扩展（PMI 加权，纯统计）：缓解改写/主题关联漏召回
+        if self.query_expansion:
+            q_tokens.extend(self._expand_query(query, user_id, chunks))
         q_signals = extract_signals(query)
         if options:
             for o in options:
@@ -382,6 +397,85 @@ class AMLMemoryService:
         self._df_cache[user_id] = df
         return df
 
+    # ── 语料内共现查询扩展（纯统计，零依赖） ────────────────────────────
+
+    def _cooc_stats(self, user_id: str, chunks: List[MemoryChunk]):
+        """构建（或取缓存）该用户的词共现统计。
+
+        Returns:
+            (cooc, df, ndocs) 或 None（语料过大 / 已判定不值得建）。
+
+        统计在**句子级窗口**内做：同一句内共现的词才算相关，比整块共现更准。
+        结果按 user 缓存，`add` 时失效；首查一次性成本，之后无开销。
+        """
+        if not self.query_expansion:
+            return None
+        if user_id in self._cooc_cache:
+            return self._cooc_cache[user_id]
+
+        budget = COOC_TOKEN_BUDGET
+        spent = 0
+        cooc: Dict[str, Dict[str, int]] = {}
+        df: Dict[str, int] = {}
+        ndocs = 0
+        seen_sent: set = set()
+        for ch in chunks:
+            if spent > budget:
+                self._cooc_cache[user_id] = None
+                logger.info("[AML] cooc skipped for %s (budget exceeded)", user_id)
+                return None
+            for sent in re.split(r"[.!?\n\u3002\uff01\uff1f]+", ch.content):
+                toks = tokenize(sent)
+                if not toks:
+                    continue
+                # 重叠分块会让同一句出现多次 → 句子级去重，否则统计被重复计数
+                # 扭曲（曾导致召回反而不如直接基于原始消息的原型）
+                h = hash(tuple(toks))
+                if h in seen_sent:
+                    continue
+                seen_sent.add(h)
+                spent += len(toks)
+                ndocs += 1
+                uniq = sorted(set(toks))
+                for w in uniq:
+                    df[w] = df.get(w, 0) + 1
+                for i, a in enumerate(uniq):
+                    ca = cooc.get(a)
+                    if ca is None:
+                        ca = cooc[a] = {}
+                    for b in uniq[i + 1:]:
+                        ca[b] = ca.get(b, 0) + 1
+                        cb = cooc.get(b)
+                        if cb is None:
+                            cb = cooc[b] = {}
+                        cb[a] = cb.get(a, 0) + 1
+        stats = (cooc, df, max(1, ndocs))
+        self._cooc_cache[user_id] = stats
+        logger.info("[AML] cooc built for %s: %d terms, %d sentences, %d tokens",
+                    user_id, len(cooc), ndocs, spent)
+        return stats
+
+    def _expand_query(self, query: str, user_id: str,
+                      chunks: List[MemoryChunk]) -> List[str]:
+        """用 PMI 加权共现词扩展查询（缓解改写/主题关联漏召回）。"""
+        stats = self._cooc_stats(user_id, chunks)
+        if not stats:
+            return []
+        cooc, df, ndocs = stats
+        qt = set(tokenize(query))
+        cand: Dict[str, float] = {}
+        for t in qt:
+            for nb, c in cooc.get(t, {}).items():
+                if c < EXPAND_MIN_COUNT or nb in qt:
+                    continue
+                pmi = math.log((c * ndocs) / max(1, df.get(t, 1) * df.get(nb, 1)) + 1e-9)
+                if pmi > 0:
+                    cand[nb] = cand.get(nb, 0.0) + pmi
+        if not cand:
+            return []
+        ranked = sorted(cand.items(), key=lambda kv: -kv[1])[:EXPAND_TOP_N]
+        return [w for w, _ in ranked]
+
     @staticmethod
     def _to_item(ch: MemoryChunk, score: float) -> Dict[str, Any]:
         return {"id": ch.id, "content": ch.content, "score": score,
@@ -407,4 +501,5 @@ class AMLMemoryService:
             cur = c.execute("DELETE FROM chunks WHERE user_id=?", (user_id,))
             deleted = cur.rowcount
         self._df_cache.pop(user_id, None)
+        self._cooc_cache.pop(user_id, None)
         return deleted

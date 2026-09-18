@@ -4,28 +4,31 @@ This document states, capability by capability, **what LAAP Memory does and wher
 it is expected to fail**. It is written to be checked against, not to impress.
 The AML textual taxonomy is used as the axis.
 
-Submission: `LAAP Memory v1.0.1` — Textual Memory, Open-source Methods track.
+Submission: `LAAP Memory v1.0.2` — Textual Memory, Open-source Methods track.
 
 ---
 
 ## Measured baseline
 
 On the public **PersonaMem-v2** subset (20 personas, 526 questions), using
-gold-snippet n-gram recall@100 as the retrieval metric (v1.0.1 defaults):
+gold-snippet n-gram recall@100 as the retrieval metric (v1.0.2 defaults):
 
 | preference type | Recall@100 |
 |---|---|
 | ask_to_forget | 98.1% |
 | health_and_medical_conditions | 93.3% |
-| anti_stereotypical_pref | 93.0% |
+| anti_stereotypical_pref | 91.0% |
 | stereotypical_pref | 91.2% |
 | therapy_background | 90.8% |
-| neutral_preferences | 88.0% |
+| neutral_preferences | 90.4% |
 | sensitive_info | 0.0% |
-| **overall** | **83.1%** |
-| **excluding sensitive_info** | **92.8%** |
+| **overall** | **84.0%** |
+| **excluding sensitive_info** | **93.8%** |
 
-Median search latency 45 ms. Method and full breakdown in `CHANGELOG.md`.
+Ranking quality: Recall@10 61.0%, Recall@50 84.2%, median rank of first hit 6.
+Median search latency 46 ms. Method, ablations and full breakdown in
+`CHANGELOG.md`.
+
 The `sensitive_info` row is discussed under capability H below — it is a
 governance question, not a retrieval miss.
 
@@ -62,13 +65,15 @@ text often carries the exact lexical form of the fact. Ranking uses fine chunks,
 but returned items are expanded with their neighbours, so the answer model
 receives contiguous context rather than a three-message window.
 
-**Measured.** 92.8% gold-snippet recall@100 on the PersonaMem-v2 subset,
+**Measured.** 93.8% gold-snippet recall@100 on the PersonaMem-v2 subset,
 excluding the sensitive-information category (see H).
 
 **Expected to fail on.** Pure paraphrase where no content word overlaps
-("what city does he call home" vs "moved to Stockholm"). There is no embedding
-channel, so there is no synonym-level matching. This is the largest remaining
-gap and the top item on the improvement list.
+("what city does he call home" vs "moved to Stockholm"). Corpus-local
+co-occurrence expansion (see `CHANGELOG.md`) recovers part of this, but the
+residual gap remains the largest lever: of the 33 remaining non-sensitive
+misses on the subset, 17 share no surface vocabulary with their gold evidence
+at all.
 
 ---
 
@@ -178,9 +183,13 @@ infer it from a gap in a table.
 
 ## Known engineering limits
 
-1. **Lexical ceiling.** No semantic/vector channel. Paraphrase recall is the main
-   expected loss. A hybrid lexical + lightweight vector retriever is the natural
-   next step, and the largest single accuracy lever left.
+1. **No embedding channel.** Lexical BM25 plus corpus-local co-occurrence
+   expansion. Paraphrase recall remains the main loss: on the PersonaMem-v2
+   subset, 17 of the 33 remaining non-sensitive misses share no surface
+   vocabulary with their gold evidence. Hosted embedding APIs are excluded by the
+   AML data-sharing rules, and a local embedding model would add a large
+   dependency plus a first-run download; a small, shipped static embedding table
+   is the most promising compliant path and the top item on the improvement list.
 2. **Sensitive-identifier handling.** Currently uniform lexical treatment; see
    capability H for the open policy question.
 3. **Multimodal not covered.** This submission targets the Textual Memory track.

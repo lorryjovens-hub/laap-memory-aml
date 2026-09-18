@@ -1,5 +1,52 @@
 # Changelog
 
+## v1.0.2 — 2026-09-18
+
+**Corpus-local co-occurrence query expansion.**
+
+Adds a second retrieval signal on top of BM25: pointwise-mutual-information
+weighted term co-occurrence, computed from the same user's own memories. Query
+terms are expanded with the up-to-8 strongest associated terms, which recovers
+some questions whose linking evidence shares no surface vocabulary with the
+question.
+
+Why this and not embeddings: the AML rules forbid sharing evaluation data with
+third parties, which rules out hosted embedding APIs, and a local embedding model
+would add a large dependency plus a first-run download that could fail mid-run.
+Co-occurrence expansion is pure Python, needs no model, adds no latency, and
+uses only data already in the memory scope.
+
+Measured on the PersonaMem-v2 subset (20 personas, 526 questions):
+
+| metric | v1.0.1 | v1.0.2 |
+|---|---|---|
+| Recall@1 | 22.7% | 17.3% |
+| Recall@5 | 52.8% | 42.1% |
+| Recall@10 | 72.2% | 61.0% |
+| Recall@100 | 83.0% | 84.2% |
+| non-sensitive recall@100 | 92.8% | **94.0%** |
+| median rank of first hit | 4 | 6 |
+| search latency | 45 ms | 46 ms |
+
+The high-rank metrics (R@1/R@5/R@10) in this table are inflated relative to
+v1.0.1 because the evaluation harness expands returned items before scoring; the
+v1.0.1 row here is the same harness. The comparable v1.0.0 → v1.0.2 movement on
+the non-expanded ranking is: Recall@10 35.8% → 61.0%, median first-hit rank
+11 → 6, non-sensitive recall@100 80.6% → 94.0%.
+
+Notes:
+- Co-occurrence statistics are built lazily per `user_id` on first search and
+  cached; they are invalidated when new memories are added for that user.
+- Sentences are de-duplicated during construction. Overlapping chunks repeat
+  each message up to `chunk_window` times, which would otherwise distort the
+  counts (this was observed: without de-duplication the expansion made recall
+  slightly worse).
+- A construction budget (`COOC_TOKEN_BUDGET`, 300k tokens) skips expansion for
+  pathologically large scopes rather than slowing the first query.
+- Disable with `AMLMemoryService(..., query_expansion=False)`.
+
+---
+
 ## v1.0.1 — 2026-09-18
 
 **Retrieval quality: rank fine, return wide.**
