@@ -11,4 +11,7 @@
 
 from laap.aml.service import AMLMemoryService, AddResult, MemoryChunk
 
-__all__ = ["AMLMemoryService", "AddResult", "MemoryChunk"]
+#: AML 提交版本号（独立于主仓库 LAAP 版本，健康检查与榜单口径一致）
+__version__ = "1.0.3"
+
+__all__ = ["AMLMemoryService", "AddResult", "MemoryChunk", "__version__"]
